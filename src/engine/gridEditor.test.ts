@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { CellType, Position } from './types';
 import {
   createEmptyGrid,
@@ -257,6 +257,7 @@ describe('handleEditorToolClick - 编辑器工具分派集成测试', () => {
   function baseParams(overrides: Partial<{
     tool: any; pos: Position; grid: CellType[][];
     start: Position; goal: Position; stars: Position[];
+    portals: any[]; oneWayPassages: any[];
     width: number; height: number;
   }> = {}) {
     return {
@@ -266,6 +267,8 @@ describe('handleEditorToolClick - 编辑器工具分派集成测试', () => {
       start: { ...START },
       goal: { ...GOAL },
       stars: [],
+      portals: [],
+      oneWayPassages: [],
       width: W,
       height: H,
       ...overrides,

@@ -62,6 +62,15 @@ export const BLOCK_CONFIGS: Record<BlockType, BlockConfig> = {
     category: 'condition',
     hasChildren: true,
   },
+  ifPortal: {
+    type: 'ifPortal',
+    label: '如果前方是传送门',
+    color: 'bg-block-condition',
+    icon: '🌀',
+    description: '如果前方有传送门入口，则执行内部指令',
+    category: 'condition',
+    hasChildren: true,
+  },
   function: {
     type: 'function',
     label: '定义函数',

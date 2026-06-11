@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { CellType, Direction, EditorTool, Position } from '../../engine/types';
+import type { CellType, Direction, EditorTool, OneWayPassage, Portal, Position } from '../../engine/types';
 import { positionEquals } from '../../engine/GameEngine';
 
 interface EditorGridProps {
@@ -9,6 +9,8 @@ interface EditorGridProps {
   start: Position;
   goal: Position;
   stars: Position[];
+  portals: Portal[];
+  oneWayPassages: OneWayPassage[];
   startDirection: Direction;
   tool: EditorTool;
   onCellClick: (x: number, y: number) => void;
@@ -84,6 +86,46 @@ const DirectionIndicator: React.FC<{ direction: Direction }> = ({ direction }) =
   );
 };
 
+const PortalEntranceMarker: React.FC = () => (
+  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+    <div className="w-4/5 h-4/5 rounded-full bg-gradient-to-br from-purple-400 to-violet-600 flex items-center justify-center animate-pulse shadow-md">
+      <span className="text-white text-sm font-bold">🌀</span>
+    </div>
+  </div>
+);
+
+const PortalExitMarker: React.FC = () => (
+  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+    <div className="w-4/5 h-4/5 rounded-full bg-gradient-to-br from-indigo-400 to-blue-600 flex items-center justify-center shadow-md">
+      <span className="text-white text-sm font-bold">🔮</span>
+    </div>
+  </div>
+);
+
+const EDITOR_ONEWAY_ROTATION: Record<Direction, number> = {
+  0: 0,
+  1: 90,
+  2: 180,
+  3: 270,
+};
+
+const OneWayMarker: React.FC<{ direction: Direction }> = ({ direction }) => {
+  const rotation = EDITOR_ONEWAY_ROTATION[direction];
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+      <div
+        className="w-4/5 h-4/5 rounded-lg bg-gradient-to-br from-amber-300 to-orange-500 flex items-center justify-center shadow-md border-2 border-orange-600"
+        style={{ transform: `rotate(${rotation}deg)` }}
+      >
+        <div className="flex flex-col items-center">
+          <div className="w-0 h-0 border-l-[5px] border-r-[5px] border-b-[8px] border-transparent border-b-white" />
+          <div className="w-3 h-0.5 bg-white rounded-full mt-0.5" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const EditorGrid: React.FC<EditorGridProps> = ({
   width,
   height,
@@ -91,6 +133,8 @@ export const EditorGrid: React.FC<EditorGridProps> = ({
   start,
   goal,
   stars,
+  portals,
+  oneWayPassages,
   startDirection,
   tool,
   onCellClick,
@@ -104,6 +148,28 @@ export const EditorGrid: React.FC<EditorGridProps> = ({
     stars.forEach((s) => set.add(`${s.x},${s.y}`));
     return set;
   }, [stars]);
+
+  const portalEntranceKeys = useMemo(() => {
+    const set = new Set<string>();
+    portals.forEach((p) => set.add(`${p.entrance.x},${p.entrance.y}`));
+    return set;
+  }, [portals]);
+
+  const portalExitKeys = useMemo(() => {
+    const map = new Map<string, Portal>();
+    portals.forEach((p) => {
+      if (p.exit.x >= 0 && p.exit.y >= 0) {
+        map.set(`${p.exit.x},${p.exit.y}`, p);
+      }
+    });
+    return map;
+  }, [portals]);
+
+  const oneWayKeys = useMemo(() => {
+    const map = new Map<string, OneWayPassage>();
+    oneWayPassages.forEach((ow) => map.set(`${ow.position.x},${ow.position.y}`, ow));
+    return map;
+  }, [oneWayPassages]);
 
   return (
     <div className="flex justify-center overflow-auto p-4 bg-white rounded-xl border border-gray-200 shadow-inner">
@@ -145,6 +211,12 @@ export const EditorGrid: React.FC<EditorGridProps> = ({
                 {isStart && <DirectionIndicator direction={startDirection} />}
                 {isGoal && <GoalMarker />}
                 {hasStar && <StarMarker />}
+
+                {portalEntranceKeys.has(`${x},${y}`) && <PortalEntranceMarker />}
+                {portalExitKeys.has(`${x},${y}`) && !portalEntranceKeys.has(`${x},${y}`) && <PortalExitMarker />}
+                {oneWayKeys.has(`${x},${y}`) && (
+                  <OneWayMarker direction={oneWayKeys.get(`${x},${y}`)!.direction} />
+                )}
               </div>
             );
           })

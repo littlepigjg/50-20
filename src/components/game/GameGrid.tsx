@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { CellType, Direction, Level, Position, RobotState } from '../../engine/types';
+import type { CellType, Direction, Level, OneWayPassage, Portal, Position, RobotState } from '../../engine/types';
 import { positionEquals } from '../../engine/GameEngine';
 
 interface GameGridProps {
@@ -129,13 +129,53 @@ const Start: React.FC = () => (
   </div>
 );
 
+const PortalEntrance: React.FC<{ portalId: string }> = ({ portalId: _portalId }) => (
+  <div className="absolute inset-0 flex items-center justify-center z-10">
+    <div className="w-4/5 h-4/5 rounded-full bg-gradient-to-br from-purple-400 to-violet-600 flex items-center justify-center animate-pulse shadow-lg shadow-purple-300/50">
+      <span className="text-white text-lg font-bold drop-shadow">🌀</span>
+    </div>
+  </div>
+);
+
+const PortalExit: React.FC<{ portalId: string }> = ({ portalId: _portalId }) => (
+  <div className="absolute inset-0 flex items-center justify-center z-10">
+    <div className="w-4/5 h-4/5 rounded-full bg-gradient-to-br from-indigo-400 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-300/50">
+      <span className="text-white text-lg font-bold drop-shadow">🔮</span>
+    </div>
+  </div>
+);
+
+const ONEWAY_ROTATION: Record<Direction, number> = {
+  0: 0,
+  1: 90,
+  2: 180,
+  3: 270,
+};
+
+const OneWayCell: React.FC<{ direction: Direction }> = ({ direction }) => {
+  const rotation = ONEWAY_ROTATION[direction];
+  return (
+    <div className="absolute inset-0 flex items-center justify-center z-10">
+      <div
+        className="w-4/5 h-4/5 rounded-lg bg-gradient-to-br from-amber-300 to-orange-500 flex items-center justify-center shadow-md border-2 border-orange-600"
+        style={{ transform: `rotate(${rotation}deg)` }}
+      >
+        <div className="flex flex-col items-center">
+          <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-b-[12px] border-transparent border-b-white drop-shadow" />
+          <div className="w-4 h-1 bg-white rounded-full mt-0.5" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const GameGrid: React.FC<GameGridProps> = ({
   level,
   robotState,
   collectedStars,
   cellSize = 60,
 }) => {
-  const { grid, width, height, start, goal, stars } = level;
+  const { grid, width, height, start, goal, stars, portals, oneWayPassages } = level;
 
   const cells = useMemo(() => {
     const result: { x: number; y: number; type: CellType }[] = [];
@@ -158,6 +198,28 @@ export const GameGrid: React.FC<GameGridProps> = ({
     stars.forEach((p) => set.add(`${p.x},${p.y}`));
     return set;
   }, [stars]);
+
+  const portalEntrances = useMemo(() => {
+    const map = new Map<string, Portal>();
+    portals.forEach((p) => map.set(`${p.entrance.x},${p.entrance.y}`, p));
+    return map;
+  }, [portals]);
+
+  const portalExits = useMemo(() => {
+    const map = new Map<string, Portal>();
+    portals.forEach((p) => {
+      if (p.exit.x >= 0 && p.exit.y >= 0) {
+        map.set(`${p.exit.x},${p.exit.y}`, p);
+      }
+    });
+    return map;
+  }, [portals]);
+
+  const oneWayMap = useMemo(() => {
+    const map = new Map<string, OneWayPassage>();
+    oneWayPassages.forEach((ow) => map.set(`${ow.position.x},${ow.position.y}`, ow));
+    return map;
+  }, [oneWayPassages]);
 
   return (
     <div
@@ -192,6 +254,18 @@ export const GameGrid: React.FC<GameGridProps> = ({
             {positionEquals({ x, y }, start) && <Start />}
 
             {positionEquals({ x, y }, goal) && <Goal />}
+
+            {portalEntrances.has(`${x},${y}`) && (
+              <PortalEntrance portalId={portalEntrances.get(`${x},${y}`)!.id} />
+            )}
+
+            {portalExits.has(`${x},${y}`) && !portalEntrances.has(`${x},${y}`) && (
+              <PortalExit portalId={portalExits.get(`${x},${y}`)!.id} />
+            )}
+
+            {oneWayMap.has(`${x},${y}`) && (
+              <OneWayCell direction={oneWayMap.get(`${x},${y}`)!.direction} />
+            )}
 
             {starIds.has(`${x},${y}`) && (
               <Star

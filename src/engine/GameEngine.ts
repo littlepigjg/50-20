@@ -3,6 +3,8 @@ import type {
   Direction,
   ExecutionState,
   Level,
+  OneWayPassage,
+  Portal,
   Position,
   Program,
   ProgramBlock,
@@ -30,11 +32,32 @@ export function isValidPosition(
 
 export function isWalkable(
   level: Level,
-  pos: Position
+  pos: Position,
+  fromPos?: Position
 ): boolean {
   if (!isValidPosition(level, pos)) return false;
   const cell = level.grid[pos.y][pos.x];
-  return cell !== 'wall';
+  if (cell === 'wall') return false;
+  if (fromPos) {
+    const oneWay = getOneWayAt(level, pos);
+    if (oneWay) {
+      const vec = DirectionVectors[oneWay.direction];
+      const allowedFrom = {
+        x: pos.x - vec.dx,
+        y: pos.y - vec.dy,
+      };
+      if (!positionEquals(fromPos, allowedFrom)) return false;
+    }
+  }
+  return true;
+}
+
+export function getOneWayAt(level: Level, pos: Position): OneWayPassage | undefined {
+  return level.oneWayPassages.find((ow) => positionEquals(ow.position, pos));
+}
+
+export function getPortalAt(level: Level, pos: Position): Portal | undefined {
+  return level.portals.find((p) => positionEquals(p.entrance, pos));
 }
 
 export function getCellAt(level: Level, pos: Position): CellType | null {
@@ -119,7 +142,8 @@ function flattenBlocks(
     } else if (
       block.type === 'ifWall' ||
       block.type === 'ifStar' ||
-      block.type === 'ifEmpty'
+      block.type === 'ifEmpty' ||
+      block.type === 'ifPortal'
     ) {
       if (block.children) {
         result.push(
@@ -170,7 +194,7 @@ export function generateExecutionPlan(
     const forward = getForwardPosition(robot);
     switch (block.type) {
       case 'ifWall':
-        return !isWalkable(level, forward);
+        return !isWalkable(level, forward, robot.position);
       case 'ifStar': {
         const hasUncollected = state.robot.stars.some((s) =>
           positionEquals(s, forward)
@@ -178,7 +202,9 @@ export function generateExecutionPlan(
         return hasUncollected;
       }
       case 'ifEmpty':
-        return isWalkable(level, forward);
+        return isWalkable(level, forward, robot.position);
+      case 'ifPortal':
+        return !!getPortalAt(level, forward);
       default:
         return false;
     }
@@ -204,7 +230,7 @@ export function generateExecutionPlan(
     switch (block.type) {
       case 'move': {
         const nextPos = getForwardPosition(state.robot);
-        if (!isWalkable(level, nextPos)) {
+        if (!isWalkable(level, nextPos, state.robot.position)) {
           state.status = 'failed';
           state.error = '机器人撞到了障碍物！';
           return false;
@@ -228,6 +254,17 @@ export function generateExecutionPlan(
             state: { ...state, robot: cloneRobotState(state.robot) },
           });
           return false;
+        }
+
+        const portal = getPortalAt(level, nextPos);
+        if (portal) {
+          state.robot.position = { ...portal.exit };
+          if (portal.exitDirection !== undefined) {
+            state.robot.direction = portal.exitDirection;
+          }
+          steps.push({
+            state: { ...state, robot: cloneRobotState(state.robot) },
+          });
         }
         break;
       }
@@ -256,7 +293,8 @@ export function generateExecutionPlan(
 
       case 'ifWall':
       case 'ifStar':
-      case 'ifEmpty': {
+      case 'ifEmpty':
+      case 'ifPortal': {
         if (evaluateCondition(block, state.robot)) {
           if (block.children) {
             for (const child of block.children) {
@@ -362,6 +400,33 @@ export function validateLevel(level: Level): string[] {
 
   if (level.allowedBlocks.length === 0) {
     errors.push('至少允许使用一种指令块');
+  }
+
+  for (const portal of level.portals) {
+    if (!isValidPosition(level, portal.entrance)) {
+      errors.push(`传送门入口位置无效`);
+    }
+    if (!isValidPosition(level, portal.exit)) {
+      errors.push(`传送门出口位置无效`);
+    }
+    if (isValidPosition(level, portal.entrance) && level.grid[portal.entrance.y][portal.entrance.x] === 'wall') {
+      errors.push('传送门入口不能在墙壁上');
+    }
+    if (isValidPosition(level, portal.exit) && level.grid[portal.exit.y][portal.exit.x] === 'wall') {
+      errors.push('传送门出口不能在墙壁上');
+    }
+    if (positionEquals(portal.entrance, portal.exit)) {
+      errors.push('传送门入口和出口不能在同一位置');
+    }
+  }
+
+  for (const ow of level.oneWayPassages) {
+    if (!isValidPosition(level, ow.position)) {
+      errors.push('单向通道位置无效');
+    }
+    if (isValidPosition(level, ow.position) && level.grid[ow.position.y][ow.position.x] === 'wall') {
+      errors.push('单向通道不能放在墙壁上');
+    }
   }
 
   return errors;

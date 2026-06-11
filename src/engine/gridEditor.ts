@@ -1,4 +1,4 @@
-import type { CellType, EditorTool, Level, Position } from './types';
+import type { CellType, Direction, EditorTool, Level, OneWayPassage, Portal, Position } from './types';
 import { positionEquals } from './GameEngine';
 import { createEmptyGrid } from './GameEngine';
 
@@ -150,8 +150,12 @@ export interface HandleEditorToolParams {
   start: Position;
   goal: Position;
   stars: Position[];
+  portals: Portal[];
+  oneWayPassages: OneWayPassage[];
   width: number;
   height: number;
+  portalExitDirection?: Direction;
+  oneWayDirection?: Direction;
 }
 
 export interface EditorToolResult {
@@ -159,6 +163,8 @@ export interface EditorToolResult {
   start?: Position;
   goal?: Position;
   stars?: Position[];
+  portals?: Portal[];
+  oneWayPassages?: OneWayPassage[];
   consumed: boolean;
   blocked?: boolean;
   message?: string;
@@ -166,7 +172,7 @@ export interface EditorToolResult {
 }
 
 export function handleEditorToolClick(params: HandleEditorToolParams): EditorToolResult {
-  const { tool, pos, grid, start, goal, stars, width, height } = params;
+  const { tool, pos, grid, start, goal, stars, portals, oneWayPassages, width, height } = params;
 
   const clampedPos = clampPosition(pos, width, height);
 
@@ -335,6 +341,143 @@ export function handleEditorToolClick(params: HandleEditorToolParams): EditorToo
       };
     }
 
+    case 'portal': {
+      const cell = getCell(grid, clampedPos);
+      if (cell === 'wall') {
+        return {
+          consumed: false,
+          blocked: true,
+          messageType: 'warning',
+          message: '不能在墙壁上放置传送门',
+        };
+      }
+      if (positionEquals(clampedPos, start)) {
+        return {
+          consumed: false,
+          blocked: true,
+          messageType: 'warning',
+          message: '不能在起点放置传送门',
+        };
+      }
+      if (positionEquals(clampedPos, goal)) {
+        return {
+          consumed: false,
+          blocked: true,
+          messageType: 'warning',
+          message: '不能在终点放置传送门',
+        };
+      }
+
+      const existingEntrance = portals.find((p) => positionEquals(p.entrance, clampedPos));
+      if (existingEntrance) {
+        const newPortals = portals.filter((p) => p.id !== existingEntrance.id);
+        return {
+          portals: newPortals,
+          consumed: true,
+          message: `已移除传送门入口 (${clampedPos.x},${clampedPos.y})`,
+          messageType: 'info',
+        };
+      }
+
+      const existingExit = portals.find((p) => positionEquals(p.exit, clampedPos));
+      if (existingExit && !existingEntrance) {
+        const newPortals = portals.filter((p) => p.id !== existingExit.id);
+        return {
+          portals: newPortals,
+          consumed: true,
+          message: `已移除传送门出口 (${clampedPos.x},${clampedPos.y})`,
+          messageType: 'info',
+        };
+      }
+
+      const pendingPortal = portals.find((p) => p.exit.x === -1 && p.exit.y === -1);
+      if (pendingPortal) {
+        if (positionEquals(clampedPos, pendingPortal.entrance)) {
+          return {
+            consumed: false,
+            blocked: true,
+            messageType: 'warning',
+            message: '传送门出口不能与入口相同',
+          };
+        }
+        const newPortals = portals.map((p) =>
+          p.id === pendingPortal.id
+            ? { ...p, exit: { ...clampedPos }, exitDirection: params.portalExitDirection }
+            : p
+        );
+        return {
+          portals: newPortals,
+          consumed: true,
+          message: `传送门出口设置在 (${clampedPos.x},${clampedPos.y})`,
+          messageType: 'info',
+        };
+      }
+
+      const portalId = `portal-${Date.now()}`;
+      const newPortal: Portal = {
+        id: portalId,
+        entrance: { ...clampedPos },
+        exit: { x: -1, y: -1 },
+      };
+      return {
+        portals: [...portals, newPortal],
+        consumed: true,
+        message: `传送门入口设置在 (${clampedPos.x},${clampedPos.y})，请点击出口位置`,
+        messageType: 'info',
+      };
+    }
+
+    case 'oneWay': {
+      const cell = getCell(grid, clampedPos);
+      if (cell === 'wall') {
+        return {
+          consumed: false,
+          blocked: true,
+          messageType: 'warning',
+          message: '不能在墙壁上放置单向通道',
+        };
+      }
+      if (positionEquals(clampedPos, start)) {
+        return {
+          consumed: false,
+          blocked: true,
+          messageType: 'warning',
+          message: '不能在起点放置单向通道',
+        };
+      }
+      if (positionEquals(clampedPos, goal)) {
+        return {
+          consumed: false,
+          blocked: true,
+          messageType: 'warning',
+          message: '不能在终点放置单向通道',
+        };
+      }
+
+      const existingOW = oneWayPassages.find((ow) => positionEquals(ow.position, clampedPos));
+      if (existingOW) {
+        const newOW = oneWayPassages.filter((ow) => !positionEquals(ow.position, clampedPos));
+        return {
+          oneWayPassages: newOW,
+          consumed: true,
+          message: `已移除 (${clampedPos.x},${clampedPos.y}) 的单向通道`,
+          messageType: 'info',
+        };
+      }
+
+      const direction = params.oneWayDirection ?? 1;
+      const newOWPassage: OneWayPassage = {
+        position: { ...clampedPos },
+        direction,
+      };
+      return {
+        oneWayPassages: [...oneWayPassages, newOWPassage],
+        consumed: true,
+        message: `已在 (${clampedPos.x},${clampedPos.y}) 放置单向通道`,
+        messageType: 'info',
+      };
+    }
+
     case 'erase': {
       let newGrid = grid;
       const current = getCell(grid, clampedPos);
@@ -346,9 +489,25 @@ export function handleEditorToolClick(params: HandleEditorToolParams): EditorToo
       const hadStar = stars.some((s) => positionEquals(s, clampedPos));
       if (hadStar) erasedWhat.push('星星');
       const newStars = removeStarAt(stars, clampedPos);
+      const portalAtPos = portals.find(
+        (p) => positionEquals(p.entrance, clampedPos) || positionEquals(p.exit, clampedPos)
+      );
+      let newPortals = portals;
+      if (portalAtPos) {
+        newPortals = portals.filter((p) => p.id !== portalAtPos.id);
+        erasedWhat.push('传送门');
+      }
+      const owAtPos = oneWayPassages.find((ow) => positionEquals(ow.position, clampedPos));
+      let newOW = oneWayPassages;
+      if (owAtPos) {
+        newOW = oneWayPassages.filter((ow) => !positionEquals(ow.position, clampedPos));
+        erasedWhat.push('单向通道');
+      }
       return {
         grid: newGrid,
         stars: newStars,
+        portals: newPortals,
+        oneWayPassages: newOW,
         consumed: true,
         message: erasedWhat.length > 0
           ? `已清除 (${clampedPos.x},${clampedPos.y}) 的${erasedWhat.join('和')}`

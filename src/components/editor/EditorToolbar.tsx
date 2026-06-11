@@ -53,6 +53,20 @@ export const EDITOR_TOOLS: ToolConfig[] = [
     description: '放置/移除陷阱（掉入即失败）',
   },
   {
+    tool: 'portal',
+    label: '传送门',
+    icon: '🌀',
+    color: 'bg-purple-500',
+    description: '先点入口再点出口，机器人走进入口会从出口出来',
+  },
+  {
+    tool: 'oneWay',
+    label: '单向通道',
+    icon: '➡️',
+    color: 'bg-orange-500',
+    description: '只能朝指定方向通过，反方向无法通行（再次点击移除）',
+  },
+  {
     tool: 'erase',
     label: '擦除',
     icon: '🧹',

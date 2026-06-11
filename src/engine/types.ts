@@ -16,6 +16,18 @@ export const DirectionNames: Record<Direction, string> = {
 
 export type CellType = 'empty' | 'wall' | 'start' | 'goal' | 'star' | 'pit';
 
+export interface Portal {
+  id: string;
+  entrance: Position;
+  exit: Position;
+  exitDirection?: Direction;
+}
+
+export interface OneWayPassage {
+  position: Position;
+  direction: Direction;
+}
+
 export interface Cell {
   type: CellType;
 }
@@ -43,6 +55,8 @@ export interface Level {
   startDirection: Direction;
   goal: Position;
   stars: Position[];
+  portals: Portal[];
+  oneWayPassages: OneWayPassage[];
   maxBlocks?: number;
   allowedBlocks: BlockType[];
   hint?: string;
@@ -56,6 +70,7 @@ export type BlockType =
   | 'ifWall'
   | 'ifStar'
   | 'ifEmpty'
+  | 'ifPortal'
   | 'function'
   | 'callFunction';
 
@@ -110,4 +125,6 @@ export type EditorTool =
   | 'goal'
   | 'star'
   | 'pit'
+  | 'portal'
+  | 'oneWay'
   | 'erase';

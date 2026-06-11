@@ -15,6 +15,7 @@ export function createBlock(type: BlockType, extras: Partial<ProgramBlock> = {})
     type === 'ifWall' ||
     type === 'ifStar' ||
     type === 'ifEmpty' ||
+    type === 'ifPortal' ||
     type === 'function'
   ) {
     block.children = [];

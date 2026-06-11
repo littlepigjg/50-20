@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { BlockType, Direction, EditorTool, Level, Position } from '../engine/types';
+import type { BlockType, Direction, EditorTool, Level, OneWayPassage, Portal, Position } from '../engine/types';
 import { validateLevel } from '../engine/GameEngine';
 import { BLOCK_CONFIGS } from '../engine/blocks';
 import {
@@ -38,6 +38,7 @@ const ALL_BLOCK_TYPES: BlockType[] = [
   'ifWall',
   'ifStar',
   'ifEmpty',
+  'ifPortal',
   'function',
   'callFunction',
 ];
@@ -57,6 +58,10 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
   const [startDirection, setStartDirection] = useState<Direction>(editLevel?.startDirection || 1);
   const [goal, setGoal] = useState<Position>(editLevel?.goal || { x: 7, y: 7 });
   const [stars, setStars] = useState<Position[]>(editLevel?.stars || []);
+  const [portals, setPortals] = useState<Portal[]>(editLevel?.portals || []);
+  const [oneWayPassages, setOneWayPassages] = useState<OneWayPassage[]>(editLevel?.oneWayPassages || []);
+  const [portalExitDirection, setPortalExitDirection] = useState<Direction | undefined>(undefined);
+  const [oneWayDirection, setOneWayDirection] = useState<Direction>(1);
   const [allowedBlocks, setAllowedBlocks] = useState<BlockType[]>(
     editLevel?.allowedBlocks || ALL_BLOCK_TYPES
   );
@@ -106,8 +111,12 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
         start,
         goal,
         stars,
+        portals,
+        oneWayPassages,
         width,
         height,
+        portalExitDirection,
+        oneWayDirection,
       });
 
       if (result.message) {
@@ -119,10 +128,12 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
       if (result.start) setStart(result.start);
       if (result.goal) setGoal(result.goal);
       if (result.stars) setStars(result.stars);
+      if (result.portals) setPortals(result.portals);
+      if (result.oneWayPassages) setOneWayPassages(result.oneWayPassages);
 
       if (errors.length > 0) setErrors([]);
     },
-    [tool, grid, start, goal, stars, width, height, errors.length, showToast]
+    [tool, grid, start, goal, stars, portals, oneWayPassages, width, height, portalExitDirection, oneWayDirection, errors.length, showToast]
   );
 
   const level: Level = useMemo(
@@ -138,10 +149,12 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
       startDirection,
       goal,
       stars,
+      portals,
+      oneWayPassages,
       allowedBlocks,
       hint: hint || undefined,
     }),
-    [editLevel, name, description, difficulty, width, height, grid, start, startDirection, goal, stars, allowedBlocks, hint]
+    [editLevel, name, description, difficulty, width, height, grid, start, startDirection, goal, stars, portals, oneWayPassages, allowedBlocks, hint]
   );
 
   const runValidation = (): boolean => {
@@ -190,6 +203,8 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
       setStartDirection(imported.startDirection);
       setGoal(imported.goal);
       setStars(imported.stars);
+      setPortals(imported.portals || []);
+      setOneWayPassages(imported.oneWayPassages || []);
       setAllowedBlocks(imported.allowedBlocks);
       setHint(imported.hint || '');
       setShowImport(false);
@@ -439,6 +454,8 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
                     start={start}
                     goal={goal}
                     stars={stars}
+                    portals={portals}
+                    oneWayPassages={oneWayPassages}
                     startDirection={startDirection}
                     tool={tool}
                     onCellClick={handleCellClick}
@@ -458,7 +475,72 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
                     <span className="text-yellow-400">★</span>
                     星星 {stars.length}颗
                   </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-purple-500">🌀</span>
+                    传送门 {portals.length}个
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-orange-500">➡</span>
+                    单向 {oneWayPassages.length}个
+                  </span>
                 </div>
+
+                {tool === 'portal' && (
+                  <div className="mt-3 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <div className="text-sm text-purple-700 font-medium mb-2">传送门出口方向（可选）</div>
+                    <div className="grid grid-cols-5 gap-1">
+                      <button
+                        onClick={() => setPortalExitDirection(undefined)}
+                        className={`p-1.5 rounded text-xs transition-all ${
+                          portalExitDirection === undefined
+                            ? 'bg-purple-500 text-white shadow-md'
+                            : 'bg-white border border-gray-200 hover:border-purple-300'
+                        }`}
+                      >
+                        保持
+                      </button>
+                      {DIRECTIONS.map(({ dir, label: _label, icon }) => (
+                        <button
+                          key={dir}
+                          onClick={() => setPortalExitDirection(dir)}
+                          className={`p-1.5 rounded text-xs transition-all ${
+                            portalExitDirection === dir
+                              ? 'bg-purple-500 text-white shadow-md'
+                              : 'bg-white border border-gray-200 hover:border-purple-300'
+                          }`}
+                        >
+                          {icon}
+                        </button>
+                      ))}
+                    </div>
+                    {portals.some((p) => p.exit.x === -1) && (
+                      <div className="mt-2 text-xs text-purple-600 animate-pulse">
+                        ⚡ 请在地图上点击传送门出口位置
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {tool === 'oneWay' && (
+                  <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <div className="text-sm text-orange-700 font-medium mb-2">单向通道允许方向</div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {DIRECTIONS.map(({ dir, label: _label, icon }) => (
+                        <button
+                          key={dir}
+                          onClick={() => setOneWayDirection(dir)}
+                          className={`p-1.5 rounded text-xs transition-all ${
+                            oneWayDirection === dir
+                              ? 'bg-orange-500 text-white shadow-md'
+                              : 'bg-white border border-gray-200 hover:border-orange-300'
+                          }`}
+                        >
+                          {icon}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -487,6 +569,12 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
                   <p>
                     <strong>6. 试玩测试：</strong>先试玩再保存
                   </p>
+                  <p>
+                    <strong>7. 传送门：</strong>先点击入口，再点击出口
+                  </p>
+                  <p>
+                    <strong>8. 单向通道：</strong>选择方向后点击放置
+                  </p>
                 </div>
 
                 <div className="mt-6 p-3 bg-blue-50 rounded-lg text-sm text-blue-700 border border-blue-100">
@@ -495,6 +583,8 @@ export const LevelEditor: React.FC<LevelEditorProps> = ({
                     <li>墙壁和陷阱不能放在起点/终点上</li>
                     <li>星星必须放在可通行的格子</li>
                     <li>陷阱会让机器人直接失败</li>
+                    <li>传送门入口和出口不能在同一位置</li>
+                    <li>单向通道只能朝指定方向通过</li>
                   </ul>
                 </div>
               </div>
